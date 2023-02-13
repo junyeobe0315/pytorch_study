@@ -7,12 +7,14 @@ import torch.utils.data as data
 import torch.nn as nn
 
 from resnet import ResNet
+from mobilenet_v1 import *
 
 transforms = Transforms.Compose([
     Transforms.RandomCrop((32,32), padding=4),
     Transforms.RandomHorizontalFlip(p=0.5),
     Transforms.ToTensor(),
-    Transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.247, 0.243, 0.261))
+    Transforms.Normalize(mean=(0.4914, 0.4822, 0.4465), std=(0.247, 0.243, 0.261)),
+    Transforms.Resize(224)
 ])
 
 train_data = torchvision.datasets.cifar.CIFAR10(root="./data", train=True, download=True, transform=transforms)
@@ -21,12 +23,14 @@ train_loader = data.DataLoader(train_data, batch_size=32, shuffle=True)
 
 if torch.backends.mps.is_available():
     device = torch.device("mps")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
 else:
-    device = "cpu"
+    device = torch.device("cpu")
 
 print("device : ", device)
 
-model = ResNet(num_classes=10)
+model = MobileNet(in_channels=3, num_classes=10)
 model.to(device)
 
 lr = 1e-4
@@ -42,6 +46,6 @@ for epochs in range(30):
         loss.backward()
         optim.step()
 
-        iterator.set_description("epoch : {} / loss : {}".format(epochs, loss.item()))
+        iterator.set_description("epoch : {} / loss : {}".format(epochs+1, loss.item()))
 
-torch.save(model.state_dict(), "./model/ResNet.pth")
+torch.save(model.state_dict(), "./model/MobileNet_v1.pth")
