@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-import torchvison.transforms as Transforms
+import torchvision.transforms as Transforms
 
 def gaussian_noise(x, scale=0.8):
     gaussian_data_x = x + np.random.normal(
