@@ -11,6 +11,8 @@ import torchvision.transforms as Transforms
 from noise import gaussian_noise
 from auto_encoder import *
 
+import random
+
 train_data = datasets.MNIST(
     root="./data",
     train=True,
@@ -28,10 +30,14 @@ class Denoising(Dataset):
         )
         self.data = []
         for i in range(len(self.mnist)):
-            noise_input = gaussian_noise(self.mnist.data[i])
-            input_tensor = torch.tensor(noise_input)
-            self.data.append(torch.unsqueeze(input_tensor, dim=0))
-    
+            p = random.randrange(0,1)
+            if p < 0.5:
+                noise_input = gaussian_noise(self.mnist.data[i])
+                input_tensor = torch.tensor(noise_input)
+                self.data.append(torch.unsqueeze(input_tensor, dim=0))
+            else:
+                self.data.append(torch.tensor(self.mnist.data[i]))
+
     def __len__(self):
         return len(self.data)
     
@@ -55,7 +61,7 @@ model = AutoEncoder().to(device)
 lr = 0.001
 optim = torch.optim.Adam(params=model.parameters(), lr=lr)
 
-for epoch in range(20):
+for epoch in range(50):
     iterator = tqdm(train_loader)
     for data, label in iterator:
         optim.zero_grad()
@@ -66,4 +72,4 @@ for epoch in range(20):
         optim.step()
         iterator.set_description("epoch : {}, loss : {}".format(epoch+1, loss.item()))
 
-torch.save(model.state_dict(), "./model.pth")
+torch.save(model.state_dict(), "./model/CAE_1.pth")

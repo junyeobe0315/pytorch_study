@@ -23,7 +23,7 @@ test_data = MNIST(
 )
 
 with torch.no_grad():
-    model.load_state_dict(torch.load("./model.pth", map_location=device))
+    model.load_state_dict(torch.load("./model/CAE_1.pth", map_location=device))
     img = test_data.data[0]
     gaussian = gaussian_noise(img)
 
@@ -34,6 +34,21 @@ with torch.no_grad():
 
     plt.subplot(1,3,1)
     plt.imshow(torch.squeeze(gaussian))
+    plt.subplot(1,3,2)
+    plt.imshow(torch.squeeze(model(input_)))
+    plt.subplot(1,3,3)
+    plt.imshow(torch.squeeze(img))
+    plt.show()
+    
+    img = test_data.data[0] /255
+
+    input_ = torch.unsqueeze(img, dim=0)
+    input_.type(torch.FloatTensor)
+    input_.to(device)
+    input_ = torch.unsqueeze(input_, dim=0)
+
+    plt.subplot(1,3,1)
+    plt.imshow(torch.squeeze(img))
     plt.subplot(1,3,2)
     plt.imshow(torch.squeeze(model(input_)))
     plt.subplot(1,3,3)

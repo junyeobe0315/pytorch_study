@@ -1,80 +1,108 @@
 import torch
 import torch.nn as nn
-import torchvision.datasets as Datasets
-import torchvision.transforms as Transforms
-import torch.utils.data as data
-import torchvision
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+from tqdm import tqdm
 
-import glob
-import imageio
-
-import matplotlib.pyplot as plt
-import numpy as np
-import os
-
-import PIL
-from PIL import Image
-import time
-import random
-
-train_data = Datasets.CIFAR10(root="./data", download=True, train=True)
-test_data = Datasets.CIFAR10(root="./data", download=True, train=False)
-
-class_name = ['airplane', 'automobile', 'bird', 'cat', 'deer',
-               'dog', 'frog', 'horse', 'ship', 'truck']
-
-transforms = Transforms.Compose([
-    Transforms.RandomHorizontalFlip(p=0.5),
-    Transforms.Resize(32,32,3),
-    Transforms.ToTensor()
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
 ])
 
-
-class Train(Datasets):
-    def __init__(self):
-        self.cifar = Datasets.CIFAR10(
-            root="./data",
-            train=True,
-            download=True,
-            transform=transforms
-        )
-        def __len__(self):
-            return len(self.cifar)
-        def __getitem__(self, idx):
-            data, label = self.cifar[idx]
-            data /= 255
-            return data, label
-
-class Test(Datasets):
-    def __init__(self):
-        self.cifar = Datasets.CIFAR10(
-            root="./data",
-            train=False,
-            download=True,
-            transform=transforms
-        )
-        def __len__(self):
-            return len(self.cifar)
-        def __getitem__(self, idx):
-            data, label = self.cifar[idx]
-            data /= 255
-            return data, label
-
-if torch.backends.mps.is_available():
-    device = torch.device("mps")
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-else:
-    device = torch.device("cpu")
-
-trainset = Train()
-testset = Test()
+train_set = datasets.MNIST('data', train=True, download=True, transform=transform)
+train_loader = DataLoader(train_set, batch_size=128, shuffle=True)
 
 class Generator(nn.Module):
-    def __init__(self):
+    def __init__(self, input_size, hidden_size, output_size):
         super(Generator, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(100, 4*4*256, bias=False),
-            nn.LeakyReLU(),
-            nn.
+        self.net = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(hidden_size, output_size),
+            nn.Tanh()
         )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class Discriminator(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super(Discriminator, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(hidden_size, 1),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+if __name__ == "__main__":
+    input_size = 100
+    hidden_size = 128
+    output_size = 28*28
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    generator = Generator(input_size, hidden_size, output_size)
+    discriminator = Discriminator(output_size, hidden_size)
+
+    generator = generator.to(device)
+    discriminator = discriminator.to(device)
+
+    criterion = nn.BCELoss()
+    lr = 0.0002
+    betas = (0.5, 0.999)
+    generator_optimizer = optim.Adam(generator.parameters(), lr=lr, betas=betas)
+    discriminator_optimizer = optim.Adam(discriminator.parameters(), lr=lr, betas=betas)
+
+    epochs = 100
+    for epoch in range(epochs):
+        iterator = tqdm(train_loader)
+        for real_images, _ in iterator:
+            real_images = real_images.to(device)
+            batch_size = real_images.shape[0]
+
+            # Train discriminator with real images
+            discriminator.zero_grad()
+            real_labels = torch.ones(batch_size, 1)
+            real_labels = real_labels.to(device)
+            real_output = discriminator(real_images.view(batch_size, -1))
+            real_loss = criterion(real_output, real_labels)
+            real_loss.backward()
+
+            # Train discriminator with generated images
+            noise = torch.randn(batch_size, input_size, device=device)
+            fake_images = generator(noise)
+            fake_labels = torch.zeros(batch_size, 1)
+            fake_labels = fake_labels.to(device)
+            fake_output = discriminator(fake_images.detach().view(batch_size, -1))
+            fake_loss = criterion(fake_output, fake_labels)
+            fake_loss.backward()
+            discriminator_optimizer.step()
+
+            # Train generator with updated discriminator
+            generator.zero_grad()
+            noise = torch.randn(batch_size, input_size, device=device)
+            fake_images = generator(noise)
+            fake_labels = torch.ones(batch_size, 1).to(device)
+            fake_output = discriminator(fake_images.view(batch_size, -1))
+            generator_loss = criterion(fake_output, fake_labels)
+            generator_loss.backward()
+            generator_optimizer.step()
+
+            iterator.set_description("epoch : {}, G loss : {}, D loss : {}".format(epoch+1, generator_loss.item(), real_loss.item()))
+    torch.save(generator.state_dict(), "./model/G.pth")
+    torch.save(discriminator.state_dict(), "./model/D.pth")
