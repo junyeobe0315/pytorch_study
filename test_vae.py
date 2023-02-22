@@ -1,17 +1,16 @@
 from vae import VAE
 from torch.utils.data import DataLoader
-from torchvision.datasets import CelebA
+from torchvision.datasets import CelebA, CIFAR10
 from torchvision import transforms
 import torch
 import matplotlib.pyplot as plt
 
 transform = transforms.Compose([
 transforms.ToTensor(),
-transforms.Normalize((0.5,), (0.5,))
 ])
 
-test_dataset = CelebA(root='./data', transform=transform, download=True, split="test")
-test_loader = DataLoader(test_dataset, batch_size=128, shuffle=True)
+test_dataset = CIFAR10(root='./data', transform=transform, download=True, train=False)
+test_loader = DataLoader(test_dataset, batch_size=8, shuffle=True)
 
 in_channels = 3
 latent_dim = 32*32
@@ -23,8 +22,7 @@ vae.eval()
 with torch.no_grad():
     plt.figure(figsize=(8,8))
     for i in range(64):
-        z = torch.randn(1024)
-        sample = vae.decode(z)[0].reshape(32,32,3)
+        sample = vae.sample(1, torch.device("cpu"))
         plt.subplot(8, 8, i+1)
         plt.imshow(sample.numpy())
     plt.show()

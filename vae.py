@@ -2,6 +2,46 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+class EncoderBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding):
+        super(EncoderBlock, self).__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=out_channels, 
+                      kernel_size=kernel_size, stride=stride, padding=padding),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU()
+        )
+    def forward(self, x):
+        return self.block(x)
+
+class DecoderBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, out_padding):
+        super(DecoderBlock, self).__init__()
+        self.block = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, 
+                                kernel_size=kernel_size, stride=stride, 
+                                padding=padding, output_padding=out_padding),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU()
+        )
+    def forward(self, x):
+        return self.block(x)
+    
+class FinalBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, out_padding):
+        super(FinalBlock, self).__init__()
+        self.block = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels, 
+                                kernel_size=kernel_size, stride=stride, 
+                                padding=padding, output_padding=out_padding),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(),
+            nn.Conv2d(in_channels=in_channels, out_channels=3, kernel_size=3, padding=1, stride=2),
+            nn.Tanh()
+        )
+    def forward(self, x):
+        return self.block(x)
+
 class VAE(nn.Module):
     def __init__(self, in_channels, latent_dim, hidden_dims):
         super(VAE, self).__init__()
@@ -9,49 +49,25 @@ class VAE(nn.Module):
         
         modules = []
         for dim in hidden_dims:
-            modules.append(
-                nn.Sequential(
-                nn.Conv2d(in_channels, out_channels=dim, kernel_size=3, stride=2, padding=1),
-                nn.BatchNorm2d(dim),
-                nn.LeakyReLU()
-                )
-            )
+            modules.append(EncoderBlock(in_channels, dim, kernel_size=3, stride=2, padding=1))
             in_channels = dim
+        
         self.encoder = nn.Sequential(*modules)
-        self.mu = nn.Linear(hidden_dims[-1], latent_dim)
-        self.var = nn.Linear(hidden_dims[-1], latent_dim)
+        self.mu = nn.Linear(hidden_dims[-1], self.latent_dim)
+        self.var = nn.Linear(hidden_dims[-1], self.latent_dim)
 
         modules = []
         self.decoder_input = nn.Linear(latent_dim, hidden_dims[-1]*4)
         hidden_dims.reverse()
 
         for i in range(len(hidden_dims)-1):
-            modules.append(
-                nn.Sequential(
-                nn.ConvTranspose2d(hidden_dims[i],
-                                   hidden_dims[i + 1],
-                                   kernel_size=3,
-                                   stride=2,
-                                   padding=1,
-                                   output_padding=1),
-                nn.BatchNorm2d(hidden_dims[i+1]),
-                nn.LeakyReLU()
-                )
-            )
+            modules.append(DecoderBlock(hidden_dims[i], hidden_dims[i+1], 
+                                        kernel_size=3, stride=2, padding=1, 
+                                        out_padding=1))
         self.decoder = nn.Sequential(*modules)
 
-        self.final_layer = nn.Sequential(
-            nn.ConvTranspose2d(hidden_dims[-1],
-                               hidden_dims[-1],
-                               kernel_size=3,
-                               stride=2,
-                               padding=1,
-                               output_padding=1),
-            nn.BatchNorm2d(hidden_dims[-1]),
-            nn.LeakyReLU(),
-            nn.Conv2d(hidden_dims[-1], out_channels=3, kernel_size=3, padding=1, stride=2),
-            nn.Tanh()
-        )
+        self.final_layer = FinalBlock(in_channels=hidden_dims[-1], out_channels=hidden_dims[-1], 
+                                      kernel_size=3, stride=2, padding=1, out_padding=1) 
 
     def encode(self, input):
         result = self.encoder(input)
@@ -95,19 +111,18 @@ class VAE(nn.Module):
     
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
-    from torchvision.datasets import CelebA
+    from torchvision.datasets import CelebA, CIFAR10
     from torchvision import transforms
     import torch.optim as optim
     from tqdm import tqdm
 
     transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
+    transforms.ToTensor()
 ])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    train_dataset = CelebA(root='./data', transform=transform, download=True, split="train")
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+    train_dataset = CIFAR10(root='./data', transform=transform, download=True, train=True)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
 
     in_channels = 3
     latent_dim = 32*32
@@ -117,7 +132,7 @@ if __name__ == "__main__":
     betas = (0.5, 0.999)
     optimizer = optim.Adam(vae.parameters(), lr=lr, betas=betas)
 
-    epochs = 100
+    epochs = 10
     for epoch in range(epochs):
         iterator = tqdm(train_loader)
         for img, _ in iterator:
