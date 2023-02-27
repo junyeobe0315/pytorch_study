@@ -19,7 +19,7 @@ transforms = Transforms.Compose([
 
 train_data = torchvision.datasets.cifar.CIFAR10(root="./data", train=True, download=True, transform=transforms)
 
-train_loader = data.DataLoader(train_data, batch_size=32, shuffle=True)
+train_loader = data.DataLoader(train_data, batch_size=64, shuffle=True)
 
 if torch.backends.mps.is_available():
     device = torch.device("mps")
